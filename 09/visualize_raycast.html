@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ray Casting - Advent of Code Day 9</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+        }
+        canvas {
+            border: 2px solid #666;
+            background: white;
+            display: block;
+            margin: 20px 0;
+        }
+        .info {
+            background: #2d2d2d;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .step {
+            margin: 10px 0;
+            padding: 10px;
+            background: #3d3d3d;
+            border-left: 3px solid #007acc;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #007acc;
+            color: white;
+            border: none;
+            border-radius: 3px;
+        }
+        button:hover { background: #005a9e; }
+    </style>
+</head>
+<body>
+    <h1>Ray Casting Algorithm - Point in Polygon</h1>
+
+    <div class="info">
+        <h3>Polígono (Red Tiles):</h3>
+        <div id="polygon-info"></div>
+    </div>
+
+    <canvas id="canvas" width="800" height="600"></canvas>
+
+    <div>
+        <button onclick="testPoint(5, 4)">Testar Ponto (5,4) - FORA</button>
+        <button onclick="testPoint(1, 4)">Testar Ponto (1,4) - FORA</button>
+        <button onclick="testPoint(6, 6)">Testar Ponto (6,6) - FORA</button>
+        <button onclick="testPoint(3, 4)">Testar Ponto (3,4) - DENTRO</button>
+        <button onclick="testPoint(4, 5)">Testar Ponto (4,5) - DENTRO</button>
+        <button onclick="reset()">Reset</button>
+    </div>
+
+    <div id="steps"></div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Polígono do input_teste.txt [y, x] ou [row, col]
+        const polygon = [
+            [1, 7],
+            [1, 11],
+            [7, 11],
+            [7, 9],
+            [5, 9],
+            [5, 2],
+            [3, 2],
+            [3, 7]
+        ];
+
+        const scale = 40;
+        const offsetX = 50;
+        const offsetY = 50;
+
+        function toCanvas(y, x) {
+            return [offsetX + x * scale, offsetY + y * scale];
+        }
+
+        function drawGrid() {
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 12; i++) {
+                ctx.beginPath();
+                ctx.moveTo(offsetX, offsetY + i * scale);
+                ctx.lineTo(offsetX + 12 * scale, offsetY + i * scale);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(offsetX + i * scale, offsetY);
+                ctx.lineTo(offsetX + i * scale, offsetY + 12 * scale);
+                ctx.stroke();
+            }
+
+            // Labels
+            ctx.fillStyle = '#666';
+            ctx.font = '12px monospace';
+            for (let i = 0; i <= 12; i++) {
+                ctx.fillText(i, offsetX + i * scale - 5, offsetY - 10);
+                ctx.fillText(i, offsetX - 30, offsetY + i * scale + 5);
+            }
+            ctx.fillText('X →', offsetX + 12 * scale + 10, offsetY - 10);
+            ctx.fillText('Y ↓', offsetX - 30, offsetY + 12 * scale + 20);
+        }
+
+        function drawPolygon() {
+            ctx.strokeStyle = '#ff0000';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+
+            for (let i = 0; i < polygon.length; i++) {
+                const [y, x] = polygon[i];
+                const [cx, cy] = toCanvas(y, x);
+                if (i === 0) ctx.moveTo(cx, cy);
+                else ctx.lineTo(cx, cy);
+            }
+            ctx.closePath();
+            ctx.stroke();
+
+            // Draw vertices
+            ctx.fillStyle = '#ff0000';
+            polygon.forEach(([y, x], i) => {
+                const [cx, cy] = toCanvas(y, x);
+                ctx.beginPath();
+                ctx.arc(cx, cy, 6, 0, 2 * Math.PI);
+                ctx.fill();
+
+                ctx.fillStyle = '#000';
+                ctx.font = 'bold 12px monospace';
+                ctx.fillText(`(${y},${x})`, cx + 10, cy - 10);
+                ctx.fillStyle = '#ff0000';
+            });
+        }
+
+        function drawRay(py, px, intersections) {
+            const [cx, cy] = toCanvas(py, px);
+
+            // Draw ray
+            ctx.strokeStyle = '#0066ff';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(offsetX + 12 * scale, cy);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Draw intersections
+            ctx.fillStyle = '#00ff00';
+            intersections.forEach(x => {
+                const [ix, iy] = toCanvas(py, x);
+                ctx.beginPath();
+                ctx.arc(ix, iy, 8, 0, 2 * Math.PI);
+                ctx.fill();
+
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            });
+        }
+
+        function drawPoint(py, px, inside) {
+            const [cx, cy] = toCanvas(py, px);
+            ctx.fillStyle = inside ? '#00ff00' : '#ff6600';
+            ctx.beginPath();
+            ctx.arc(cx, cy, 10, 0, 2 * Math.PI);
+            ctx.fill();
+
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 14px monospace';
+            ctx.fillText(`P(${py},${px})`, cx - 30, cy - 15);
+        }
+
+        function rayCasting(py, px) {
+            const steps = [];
+            let inside = false;
+            const intersections = [];
+
+            steps.push(`<h3>Testando ponto P(${py},${px})</h3>`);
+            steps.push(`<p><strong>Algoritmo:</strong> Jogar raio horizontal para direita e contar cruzamentos</p>`);
+
+            for (let i = 0; i < polygon.length; i++) {
+                const [y1, x1] = polygon[i];
+                const [y2, x2] = polygon[(i + 1) % polygon.length];
+
+                steps.push(`<div class="step"><strong>Aresta ${i+1}:</strong> (${y1},${x1}) → (${y2},${x2})</div>`);
+
+                // Verifica se a aresta cruza a altura do ponto
+                if ((y1 > py) !== (y2 > py)) {
+                    // Calcula o X onde a aresta cruza a linha horizontal
+                    // Fórmula: x = x1 + (py - y1) * (x2 - x1) / (y2 - y1)
+                    const x_intersect = x1 + (py - y1) * (x2 - x1) / (y2 - y1);
+
+                    steps.push(`  → Aresta cruza altura Y=${py}`);
+                    steps.push(`  → X de interseção: ${x_intersect.toFixed(2)}`);
+
+                    if (px < x_intersect) {
+                        steps.push(`  → ✓ Raio cruza! (${px} < ${x_intersect.toFixed(2)})`);
+                        inside = !inside;
+                        intersections.push(x_intersect);
+                        steps.push(`  → Estado: ${inside ? 'DENTRO' : 'FORA'}`);
+                    } else {
+                        steps.push(`  → ✗ Raio não cruza (${px} >= ${x_intersect.toFixed(2)})`);
+                    }
+                } else {
+                    steps.push(`  → Aresta não cruza altura Y=${py}`);
+                }
+            }
+
+            steps.push(`<div class="step" style="border-color: ${inside ? '#00ff00' : '#ff6600'}">` +
+                      `<h3>Resultado: ${intersections.length} cruzamentos</h3>` +
+                      `<p>${intersections.length % 2 === 1 ? 'ÍMPAR' : 'PAR'} → ` +
+                      `Ponto está <strong>${inside ? 'DENTRO' : 'FORA'}</strong></p></div>`);
+
+            return { inside, intersections, steps };
+        }
+
+        function testPoint(py, px) {
+            reset();
+            const result = rayCasting(py, px);
+
+            drawRay(py, px, result.intersections);
+            drawPoint(py, px, result.inside);
+
+            document.getElementById('steps').innerHTML = result.steps.join('');
+        }
+
+        function reset() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGrid();
+            drawPolygon();
+            document.getElementById('steps').innerHTML = '';
+        }
+
+        // Initial draw
+        document.getElementById('polygon-info').innerHTML =
+            polygon.map(([y,x], i) => `${i+1}. (${y},${x})`).join(' → ') + ' → (1,7)';
+        reset();
+    </script>
+</body>
+</html>
