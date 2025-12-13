@@ -5,6 +5,24 @@ require 'forwardable'
 
 INPUT_FILE = "./input_teste.txt"
 
+
+def analyze_sections(sections)
+    sections.map do |section|
+        size = section[:width] * section[:height]
+        space_needed = section[:presents_needed].reduce(0) { |memo, present_space| memo + (present_space * 9) }
+        min_space_needed = section[:presents_needed].reduce(0) { |memo, present_space| memo + (present_space * 7) }
+
+        if size > space_needed
+            :yes
+        elsif size > min_space_needed
+            :maybe
+        else
+            :no
+        end
+    end
+end
+
+
 class Present
     extend Forwardable
 
@@ -75,6 +93,14 @@ end
 class Section
     attr_reader :width, :height, :grid, :presents, :presents_needed
 
+
+    @@cache = {}
+
+    class << self
+        attr_accessor :cache
+
+    end
+
     def initialize(width, height, presents, presents_needed, grid = [])
         @width = width
         @height = height
@@ -88,7 +114,10 @@ class Section
     end
 
     def fit_all_presents?
-        return true if presents_needed.all?(&:zero?)
+        if presents_needed.all?(&:zero?)
+            puts self
+            return true 
+        end
 
         present_index = presents_needed.find_index { |p| !p.zero? }
         present = presents[present_index]
@@ -183,12 +212,20 @@ sections = input.scan(sections_regexp)
 
 sections.map! { |section| {width: section[0].to_i, height: section[1].to_i, presents_needed: section[2].split(" ").map(&:to_i)} }
 
+result = analyze_sections(sections)
+
 
 sections.map! { |section|  Section.new(section[:width], section[:height], presents, section[:presents_needed]) }
 
+count = 0
 
-count = sections.count(&:fit_all_presents?)
+sections.each_with_index do |section, i|
+    next if result[i] == :no
+    next count += 1 if result[i] == :yes
+    count += 1 if section.fit_all_presents?
+end
 
-byebug
+#sections.map { |section| puts section.fit_all_presents? }
 
-puts input.inspect
+
+puts count
